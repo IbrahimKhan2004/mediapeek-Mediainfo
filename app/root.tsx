@@ -1,5 +1,6 @@
 import './app.css';
 
+import clsx from 'clsx';
 import {
   isRouteErrorResponse,
   Links,
@@ -7,9 +8,18 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from 'react-router';
+import {
+  PreventFlashOnWrongTheme,
+  ThemeProvider,
+  useTheme,
+} from 'remix-themes';
+
+import { Toaster } from '~/components/ui/sonner';
 
 import type { Route } from './+types/root';
+import { themeSessionResolver } from './sessions.server';
 
 export const links: Route.LinksFunction = () => [
   { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
@@ -25,17 +35,40 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
+// Return the theme from the session storage using the loader
+export async function loader({ request }: Route.LoaderArgs) {
+  const { getTheme } = await themeSessionResolver(request);
+  return {
+    theme: getTheme(),
+  };
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
+  const data = useLoaderData<typeof loader>();
   return (
-    <html lang="en" className="dark">
+    <ThemeProvider specifiedTheme={data?.theme} themeAction="/action/set-theme">
+      <AppWithProviders>{children}</AppWithProviders>
+    </ThemeProvider>
+  );
+}
+
+function AppWithProviders({ children }: { children: React.ReactNode }) {
+  const data = useLoaderData<typeof loader>();
+  const [theme] = useTheme();
+  return (
+    <html lang="en" className={clsx(theme)}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
+        <PreventFlashOnWrongTheme ssrTheme={Boolean(data?.theme)} />
         <Links />
       </head>
-      <body className="bg-gray-950 text-white antialiased">
-        <div className="mx-auto w-full max-w-screen-2xl">{children}</div>
+      <body className="bg-background text-foreground antialiased">
+        <div className="w-full">
+          {children}
+          <Toaster />
+        </div>
         <ScrollRestoration />
         <Scripts />
       </body>

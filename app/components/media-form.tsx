@@ -1,45 +1,34 @@
-import { Input } from '@base-ui/react/input';
-import clsx from 'clsx';
-import { motion } from 'motion/react';
-import { useActionState, useState } from 'react';
+import { AlertCircle, Loader2 } from 'lucide-react';
+import { useActionState, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
+import { toast } from 'sonner';
 
-import { analyzeMedia } from '../services/mediainfo';
+import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert';
+import { Badge } from '~/components/ui/badge';
+import { Button } from '~/components/ui/button';
+import { Input } from '~/components/ui/input';
+import { Skeleton } from '~/components/ui/skeleton';
+
+import { CopyButton } from './copy-button';
 import { FormatMenu } from './format-menu';
-
-// Apple-style Activity Indicator (simple spinner for now, can be SVG)
-function ActivityIndicator() {
-  return (
-    <span className="relative flex h-5 w-5">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-20"></span>
-      <span className="relative inline-flex h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
-    </span>
-  );
-}
+import { ModeToggle } from './mode-toggle';
+import { PrivateBinButton } from './privatebin-button';
 
 // Separate component to utilize useFormStatus
 function SubmitButton() {
   const { pending } = useFormStatus();
 
   return (
-    <motion.button
-      type="submit"
-      disabled={pending}
-      // Fix: Explicitly define starting color in style prop as HEX so motion can interpolate
-      style={{ backgroundColor: '#2563eb' }} // blue-600
-      whileHover={{ scale: 1.01, backgroundColor: '#4338ca' }} // indigo-700
-      whileTap={{ scale: 0.98 }}
-      className="w-full rounded-2xl py-4 text-lg font-semibold text-white shadow-lg transition-colors disabled:cursor-not-allowed disabled:opacity-70"
-    >
+    <Button type="submit" disabled={pending}>
       {pending ? (
-        <span className="flex items-center justify-center gap-3">
-          <ActivityIndicator />
-          <span>Processing...</span>
-        </span>
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Processing...
+        </>
       ) : (
         'Get Info'
       )}
-    </motion.button>
+    </Button>
   );
 }
 
@@ -49,17 +38,29 @@ type FormState = {
   error: string | null;
   status: string;
   url?: string;
+  duration?: number | null;
 };
 
 const initialState: FormState = {
   result: null,
   error: null,
   status: '',
+  duration: null,
 };
 
 export function MediaForm() {
   const [realtimeStatus, setRealtimeStatus] = useState<string>('');
   const [selectedFormat, setSelectedFormat] = useState<string>('text');
+
+  useEffect(() => {
+    // Check if running on client side
+    if (typeof window !== 'undefined') {
+      const isMobile = window.matchMedia('(max-width: 768px)').matches;
+      if (isMobile) {
+        setSelectedFormat('minimal');
+      }
+    }
+  }, []);
 
   const [state, formAction, isPending] = useActionState(
     async (_prevState: FormState, formData: FormData): Promise<FormState> => {
@@ -68,20 +69,39 @@ export function MediaForm() {
         return { result: null, error: 'URL is required', status: '' };
       }
 
-      setRealtimeStatus('Connecting...');
+      setRealtimeStatus('Analyzing media metadata via secure proxy...');
+      const startTime = performance.now();
+
       try {
-        const format = (formData.get('format') as string) || 'text';
-        const result = await analyzeMedia(
-          url,
-          () => {},
-          (s) => setRealtimeStatus(s),
-          format,
+        // --- SERVER ANALYSIS ---
+        const response = await fetch(
+          `/resource/analyze?url=${encodeURIComponent(url)}&format=${selectedFormat}`,
         );
-        // Haptic Feedback on Success (Standard Web Vibration API)
+        const data = (await response.json()) as {
+          result?: string;
+          error?: string;
+        };
+
+        if (!response.ok || data.error) {
+          throw new Error(data.error || 'Server analysis failed');
+        }
+        const resultData = data.result || '';
+
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+
+        // Haptic Feedback
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
           navigator.vibrate(50);
         }
-        return { result, error: null, status: 'Done', url };
+
+        return {
+          result: resultData,
+          error: null,
+          status: 'Done',
+          url,
+          duration,
+        };
       } catch (err) {
         // Haptic Feedback on Error
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -89,7 +109,7 @@ export function MediaForm() {
         }
         return {
           result: null,
-          error: err instanceof Error ? err.message : 'Failed',
+          error: err instanceof Error ? err.message : 'Analysis Failed',
           status: 'Failed',
           url,
         };
@@ -98,31 +118,39 @@ export function MediaForm() {
     initialState,
   );
 
+  // Toast effect for errors only (success toast removed as per request)
+  useEffect(() => {
+    if (state.status === 'Failed' && state.error) {
+      toast.error('Analysis Failed', {
+        description: state.error,
+      });
+    }
+  }, [state.status, state.error]);
+
   return (
-    <div className="flex min-h-[50vh] w-full flex-col items-center justify-center p-2 md:p-4">
+    <div className="flex min-h-[50vh] w-full flex-col items-center justify-center py-10">
       {/* Main Container */}
-      <motion.div
-        initial={{ opacity: 0, y: 15, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }} // Apple-native ease
-        className="relative w-full max-w-5xl overflow-hidden rounded-3xl p-5 sm:p-12"
-      >
+      <div className="relative w-full max-w-5xl sm:p-12">
         <div className="relative z-10 space-y-10">
-          {/* Header - Left Aligned & Apple Typography */}
-          <div className="space-y-2 text-left">
-            <h1 className="text-4xl font-semibold tracking-tight text-white drop-shadow-sm sm:text-5xl">
-              MediaPeek
-            </h1>
-            <p className="max-w-md text-lg font-normal text-gray-400">
-              Instant remote metadata analysis.
-            </p>
+          {/* Header - Left Aligned */}
+          <div className="flex items-start justify-between">
+            <div className="space-y-2 text-left">
+              <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+                MediaPeek
+              </h1>
+              <p className="text-muted-foreground leading-7">
+                View detailed metadata for video, audio, image, and subtitle
+                files.
+              </p>
+            </div>
+            <ModeToggle />
           </div>
 
           <form action={formAction} className="space-y-8">
-            <div className="space-y-3">
+            <div className="space-y-2">
               <label
                 htmlFor="media-url"
-                className="ml-1 text-xs font-medium tracking-wider text-gray-500 uppercase"
+                className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
                 Media URL
               </label>
@@ -130,10 +158,9 @@ export function MediaForm() {
                 <Input
                   id="media-url"
                   name="url"
-                  className="w-full rounded-2xl border-none bg-white/10 px-5 py-4 text-lg font-medium tracking-wide text-white placeholder-white/40 transition-colors outline-none focus:bg-white/20 focus:ring-0"
-                  placeholder="https://example.com/movie.mkv"
+                  placeholder="https://example.com/video.mp4"
                   autoComplete="off"
-                  // Fix: Ensure controlled/uncontrolled consistency
+                  key={state.url}
                   defaultValue={state.url || ''}
                   required
                 />
@@ -152,44 +179,72 @@ export function MediaForm() {
             </div>
           </form>
 
-          {/* Status Indicator (Apple Style: Subtle, inline) */}
+          {/* Status Indicator */}
           {(isPending || state.error) && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="overflow-hidden rounded-xl bg-white/5 px-4 py-3 backdrop-blur-md"
-            >
-              <p
-                className={clsx(
-                  'text-sm font-medium',
-                  state.error ? 'text-red-400' : 'text-gray-300',
-                )}
-              >
-                {state.error ? state.error : realtimeStatus}
-              </p>
-            </motion.div>
+            <div>
+              {!isPending && state.error ? (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>{state.error}</AlertDescription>
+                </Alert>
+              ) : (
+                <p className="text-muted-foreground text-sm font-medium">
+                  {realtimeStatus}
+                </p>
+              )}
+            </div>
           )}
         </div>
-      </motion.div>
+      </div>
+
+      {/* Loading Skeleton */}
+      {isPending && !state.result && (
+        <div className="mt-8 w-full max-w-5xl px-0 sm:px-12">
+          <div className="bg-card w-full overflow-hidden rounded-xl border shadow-sm">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+            <div className="space-y-4 p-6">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-[90%]" />
+              <Skeleton className="h-4 w-[85%]" />
+              <Skeleton className="h-4 w-[60%]" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Result Card */}
       {state.result && !isPending && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.35, ease: 'easeOut' }}
-          className="mt-8 w-full max-w-5xl rounded-3xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-2xl"
-        >
-          <div className="p-8">
-            <div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
-              <h2 className="text-xl font-semibold text-white">Metadata</h2>
-              {/* Badge removed for cleaner HIG focus/selection look */}
+        <div className="w-full max-w-5xl px-0 sm:px-12">
+          <div className="bg-card mt-8 w-full rounded-xl border shadow-sm">
+            <div className="bg-card/95 sticky top-0 z-20 flex flex-col items-start gap-4 border-b px-6 py-4 backdrop-blur-sm first:rounded-t-xl sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="scroll-m-20 text-3xl font-semibold tracking-tight first:mt-0">
+                  Metadata
+                </h2>
+                {state.duration && (
+                  <Badge variant="secondary">
+                    Duration: {(state.duration / 1000).toFixed(1)}s
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <CopyButton content={state.result!} />
+                <PrivateBinButton content={state.result!} />
+              </div>
             </div>
-            <pre className="scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent max-h-[600px] overflow-auto font-mono text-xs leading-relaxed whitespace-pre text-gray-300 sm:text-sm md:whitespace-pre-wrap">
-              {state.result}
-            </pre>
+            <div className="relative rounded-b-xl p-6">
+              <div className="overflow-x-auto">
+                <pre className="text-base leading-none font-medium">
+                  {state.result}
+                </pre>
+              </div>
+            </div>
           </div>
-        </motion.div>
+        </div>
       )}
     </div>
   );

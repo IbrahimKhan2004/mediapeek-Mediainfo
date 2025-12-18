@@ -60,25 +60,34 @@ export default {
 
         const upstreamHeaders = new Headers();
 
-        // Forward key headers
-        const allowedReqHeaders = [
-          'Range',
-          'User-Agent',
-          'Accept',
-          'Accept-Encoding',
-        ];
-        for (const header of allowedReqHeaders) {
-          const val = request.headers.get(header);
-          if (val) upstreamHeaders.set(header, val);
+        // 1. Critical: Always forward the Range header if present
+        const range = request.headers.get('Range');
+        if (range) {
+          upstreamHeaders.set('Range', range);
         }
 
-        // Always set a default User-Agent if none provided, to avoid blocking
-        if (!upstreamHeaders.has('User-Agent')) {
-          upstreamHeaders.set(
-            'User-Agent',
-            'MediaPeek/1.0 (Cloudflare Worker)',
-          );
-        }
+        // 2. Browser Emulation Headers (Hardcoded to mimic Chrome/macOS as requested)
+        upstreamHeaders.set(
+          'accept',
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        );
+        upstreamHeaders.set('accept-language', 'en-US,en;q=0.9');
+        upstreamHeaders.set('priority', 'u=0, i');
+        upstreamHeaders.set(
+          'sec-ch-ua',
+          '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+        );
+        upstreamHeaders.set('sec-ch-ua-mobile', '?0');
+        upstreamHeaders.set('sec-ch-ua-platform', '"macOS"');
+        upstreamHeaders.set('sec-fetch-dest', 'document');
+        upstreamHeaders.set('sec-fetch-mode', 'navigate');
+        upstreamHeaders.set('sec-fetch-site', 'none');
+        upstreamHeaders.set('sec-fetch-user', '?1');
+        upstreamHeaders.set('upgrade-insecure-requests', '1');
+        upstreamHeaders.set(
+          'user-agent',
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        );
 
         const upstreamResponse = await fetch(upstreamUrl.toString(), {
           method: request.method,
