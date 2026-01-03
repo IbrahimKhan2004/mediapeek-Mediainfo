@@ -59,20 +59,28 @@ export function AudioSection({
               className="bg-muted/20 border-muted/30 hover:bg-muted/30 flex flex-col justify-between rounded-lg border p-4 transition-colors sm:flex-row sm:items-center"
             >
               <div className="flex flex-1 flex-col gap-1">
-                <div className="flex w-full items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-foreground/85 text-base font-semibold">
-                      {langName}
-                    </span>
-                    {langCode && langCode !== langName && (
-                      <span className="text-muted-foreground text-xs uppercase">
-                        ({langCode})
+                <div className="flex w-full flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-foreground/85 text-base font-semibold">
+                        {langName}
                       </span>
-                    )}
+                      {langCode && langCode !== langName && (
+                        <span className="text-muted-foreground text-xs uppercase">
+                          ({langCode})
+                        </span>
+                      )}
+                    </div>
+                    {/* Mobile Badges - Inline Right */}
+                    <div className="flex gap-2 sm:hidden">{renderBadges()}</div>
                   </div>
-                  {/* Mobile Badges - Inline Right */}
-                  <div className="flex gap-2 sm:hidden">{renderBadges()}</div>
+                  {audio['Title'] && (
+                    <span className="text-muted-foreground text-xs">
+                      {audio['Title']}
+                    </span>
+                  )}
                 </div>
+
                 <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-foreground/85">
                     {format} {commercial ? `(${commercial})` : ''}
@@ -84,7 +92,14 @@ export function AudioSection({
                     )}
                   </span>
                   <span>•</span>
-                  <span className="text-foreground/85">{channels}</span>
+                  <span className="text-foreground/85">
+                    {channels}
+                    {audio.extra?.NumberOfDynamicObjects && (
+                      <span className="ml-1">
+                        with {audio.extra.NumberOfDynamicObjects} Objects
+                      </span>
+                    )}
+                  </span>
                   {bitrateMode && <span>• {bitrateMode}</span>}
                   {audio['Compression_Mode'] && (
                     <span className="text-foreground/85">
@@ -99,10 +114,34 @@ export function AudioSection({
                       </span>
                     </>
                   )}
+                  {audio['BitRate_Maximum'] && (
+                    <>
+                      <span>•</span>
+                      <span className="text-foreground/85">
+                        {formatBitrate(audio['BitRate_Maximum'])}
+                      </span>
+                    </>
+                  )}
                   {samplingRate && (
                     <>
                       <span>•</span>
                       <span className="text-foreground/85">{samplingRate}</span>
+                    </>
+                  )}
+                  {audio['BitDepth'] && (
+                    <>
+                      <span>•</span>
+                      <span className="text-foreground/85">
+                        {audio['BitDepth']}-bit
+                      </span>
+                    </>
+                  )}
+                  {audio.extra?.dialnorm && (
+                    <>
+                      <span>•</span>
+                      <span className="text-yellow-500/80">
+                        Dialnorm: {audio.extra.dialnorm}
+                      </span>
                     </>
                   )}
                   {delay !== 0 && (

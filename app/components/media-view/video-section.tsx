@@ -127,7 +127,7 @@ export function VideoSection({
                 return null;
               })()}
               {video['colour_primaries'] && (
-                <div className="sm:col-span-2 lg:col-span-2">
+                <div>
                   <span className="text-muted-foreground mb-1 block text-xs tracking-wider uppercase">
                     Color Primaries
                   </span>
