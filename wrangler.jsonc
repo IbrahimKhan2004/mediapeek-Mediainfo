@@ -10,6 +10,7 @@
   "main": "./workers/app.ts",
   "vars": {
     "VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAACLSwN-VBqB6mZ1u",
   },
   "observability": {
     "enabled": true,

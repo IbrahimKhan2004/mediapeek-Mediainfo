@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { TURNSTILE_SITE_KEY } from '~/lib/constants';
+import { getTurnstileSiteKey } from '~/lib/constants';
 
 interface TurnstileWidgetProps {
   onVerify: (token: string) => void;
@@ -35,10 +35,13 @@ export function TurnstileWidget({
   const containerRef = useRef<HTMLDivElement>(null);
   const [widgetId, setWidgetId] = useState<string | null>(null);
 
+  const [isVerified, setIsVerified] = useState(false);
+
   useEffect(() => {
     // Localhost / Development Bypass
     if (import.meta.env.DEV) {
       onVerify('localhost-mock-token');
+      setIsVerified(true);
       return;
     }
 
@@ -50,16 +53,19 @@ export function TurnstileWidget({
         clearInterval(checkTurnstile);
         if (!widgetId) {
           try {
+            const siteKey = getTurnstileSiteKey();
             const id = window.turnstile.render(containerRef.current, {
-              sitekey: TURNSTILE_SITE_KEY,
+              sitekey: siteKey,
               callback: (token) => {
                 onVerify(token);
+                setIsVerified(true);
               },
               'error-callback': () => {
                 onError?.();
               },
               'expired-callback': () => {
                 onExpire?.();
+                setIsVerified(false);
               },
               theme: 'auto',
             });
@@ -81,11 +87,21 @@ export function TurnstileWidget({
   }, []);
 
   if (import.meta.env.DEV) {
-    return (
+    return isVerified ? null : (
       <div className="text-muted-foreground flex min-h-[65px] min-w-[300px] items-center justify-center rounded-md border border-dashed p-4 text-sm">
         Turnstile Bypassed (Dev Mode)
       </div>
     );
+  }
+
+  // We keep the widget in DOM but hide it to avoid re-verification issues if react unmounts/remounts excessively
+  // Or simply return null if we are confident.
+  // Generally safer to css-hide it so the session stays active if we needed to re-submit but usually token is one-time use anyway.
+  // Actually, once verified, we have the token. If user submits, token is used.
+  // If we hide it, that's fine.
+
+  if (isVerified) {
+    return null;
   }
 
   return <div ref={containerRef} className="min-h-[65px] min-w-[300px]" />;

@@ -36,7 +36,7 @@ export default async function handleRequest(
 
   responseHeaders.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https: data:; connect-src 'self' https:;",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https: data:; connect-src 'self' https:; frame-src 'self' https://challenges.cloudflare.com;",
   );
   responseHeaders.set('X-Content-Type-Options', 'nosniff');
   responseHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');

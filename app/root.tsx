@@ -21,6 +21,14 @@ import { Toaster } from '~/components/ui/sonner';
 import type { Route } from './+types/root';
 import { createThemeSessionResolverWithSecret } from './sessions.server';
 
+declare global {
+  interface Window {
+    ENV: {
+      TURNSTILE_SITE_KEY: string;
+    };
+  }
+}
+
 export const links: Route.LinksFunction = () => [
   { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
 
@@ -43,6 +51,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   )(request);
   return {
     theme: getTheme(),
+    env: {
+      TURNSTILE_SITE_KEY: context.cloudflare.env.TURNSTILE_SITE_KEY,
+    },
   };
 }
 
@@ -100,6 +111,11 @@ function AppWithProviders({ children }: { children: React.ReactNode }) {
             />
           </>
         )}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.ENV = ${JSON.stringify(data?.env)}`,
+          }}
+        />
         <script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
           async
