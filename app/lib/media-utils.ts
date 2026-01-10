@@ -77,6 +77,7 @@ export const getAccessibilityFeatures = (
     return (
       title.includes('ad') ||
       title.includes('audio description') ||
+      title.includes('commentary') ||
       serviceKind.includes('audio description') ||
       serviceKind.includes('visually impaired')
     );

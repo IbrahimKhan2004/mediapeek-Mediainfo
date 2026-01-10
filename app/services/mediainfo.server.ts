@@ -1,3 +1,4 @@
+import { log } from '~/lib/logger.server';
 import MediaInfoFactory from '~/lib/mediaInfoFactory';
 
 export interface MediaInfoResult {
@@ -12,6 +13,9 @@ export async function analyzeMediaBuffer(
   filename: string,
   requestedFormats: string[] = [],
 ): Promise<MediaInfoResult> {
+  const tStart = performance.now();
+  log(`Starting analysis for ${filename} (${fileSize} bytes)`);
+
   const readChunk = async (size: number, offset: number) => {
     if (offset >= fileBuffer.byteLength) {
       return new Uint8Array(0);
@@ -52,14 +56,17 @@ export async function analyzeMediaBuffer(
     const initialFormat = formatsToGenerate[0]?.type || 'object';
 
     let wasmModule;
+    const tWasm = performance.now();
     try {
       // @ts-expect-error - Missing types for WASM import
       const imported = await import('../wasm/MediaInfoModule.wasm');
       wasmModule = imported.default;
     } catch (err) {
-      console.warn('Failed to load WASM module dynamically:', err);
+      log('Failed to load WASM module dynamically:', 'warn', err);
     }
+    log(`WASM module loaded in ${Math.round(performance.now() - tWasm)}ms`);
 
+    const tFactory = performance.now();
     infoInstance = await MediaInfoFactory({
       format:
         initialFormat === 'Text'
@@ -71,15 +78,22 @@ export async function analyzeMediaBuffer(
       wasmModule,
       locateFile: () => 'ignored',
     });
+    log(
+      `MediaInfo instance created in ${Math.round(performance.now() - tFactory)}ms`,
+    );
 
     for (const { type, key } of formatsToGenerate) {
+      const tFormat = performance.now();
       try {
+        log(`Generating format: ${type}...`);
         // Use 'text' (lowercase) for Text view to match MediaInfo expectation
         const formatStr = type === 'Text' ? 'text' : type;
 
         infoInstance.options.format = formatStr as 'object';
-        // Enable full output (internal tags) only for object/JSON view
-        infoInstance.options.full = Boolean(type === 'object');
+        // Enable full output (internal tags) for object/JSON view AND Text view
+        infoInstance.options.full = Boolean(
+          type === 'object' || type === 'Text',
+        );
 
         infoInstance.reset();
 
@@ -115,7 +129,7 @@ export async function analyzeMediaBuffer(
             }
             results[key] = JSON.stringify(json, null, 2);
           } catch (e) {
-            console.warn('Failed to process object result:', e);
+            log('Failed to process object result:', 'warn', e);
             results[key] = '{}';
           }
         } else if (type === 'Text') {
@@ -147,13 +161,16 @@ export async function analyzeMediaBuffer(
         } else {
           results[key] = resultStr;
         }
+        log(
+          `Generated ${type} in ${Math.round(performance.now() - tFormat)}ms`,
+        );
       } catch (err) {
-        console.error(`Failed to generate ${type}:`, err);
+        log(`Failed to generate ${type}:`, 'error', err);
         results[key] = `Error generating ${type} view.`;
       }
     }
   } catch (error) {
-    console.error('MediaInfo Analysis execution failed:', error);
+    log('MediaInfo Analysis execution failed:', 'error', error);
     throw error;
   } finally {
     if (infoInstance) {
@@ -161,5 +178,8 @@ export async function analyzeMediaBuffer(
     }
   }
 
+  log(
+    `Total analysis completed in ${Math.round(performance.now() - tStart)}ms`,
+  );
   return results;
 }

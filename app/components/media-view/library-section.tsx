@@ -116,7 +116,7 @@ export function LibrarySection({
             </h4>
             <p className="text-muted-foreground text-xs leading-relaxed">
               <span>
-                Powered by{' '}
+                Analysis by{' '}
                 <a
                   href="https://mediainfo.js.org/"
                   target="_blank"
@@ -125,8 +125,23 @@ export function LibrarySection({
                 >
                   mediainfo.js
                 </a>
-                , a WebAssembly port of MediaInfoLib. Compiled from C++, it
-                enables secure analysis on Cloudflare Workers.
+                , a WebAssembly port of{' '}
+                <a
+                  href="https://mediaarea.net/en/MediaInfo"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors hover:underline"
+                >
+                  MediaInfo
+                </a>{' '}
+                library, Copyright (c) 2002-2026{' '}
+                <a
+                  href="mailto:info@mediaarea.net"
+                  className="hover:text-foreground transition-colors hover:underline"
+                >
+                  MediaArea.net SARL
+                </a>
+                .
               </span>
             </p>
           </div>

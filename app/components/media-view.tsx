@@ -1,10 +1,11 @@
 'use client';
 
 import { Maximize2, Minimize2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '~/components/ui/button';
+import { Skeleton } from '~/components/ui/skeleton';
 import { cn } from '~/lib/utils';
 import type { MediaInfoJSON } from '~/types/media';
 
@@ -25,7 +26,41 @@ interface MediaViewProps {
 export function MediaView({ data, url }: MediaViewProps) {
   const [isTextView, setIsTextView] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [lazyText, setLazyText] = useState<string | null>(null);
+  const [isFetchingText, setIsFetchingText] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Lazy load text view on demand
+  useEffect(() => {
+    if (isTextView && !data.text && !lazyText && !isFetchingText) {
+      const fetchText = async () => {
+        setIsFetchingText(true);
+        try {
+          const response = await fetch(
+            `/resource/analyze?url=${encodeURIComponent(url)}&format=text`,
+          );
+          if (response.ok) {
+            const data = (await response.json()) as {
+              results?: { text?: string };
+            };
+            if (data.results?.text) {
+              setLazyText(data.results.text);
+            } else {
+              setLazyText('No text data available.');
+            }
+          } else {
+            setLazyText('Failed to load text view.');
+          }
+        } catch (error) {
+          console.error('Failed to fetch text view:', error);
+          setLazyText('Error loading text view.');
+        } finally {
+          setIsFetchingText(false);
+        }
+      };
+      fetchText();
+    }
+  }, [isTextView, data.text, lazyText, isFetchingText, url]);
 
   // Handle Escape key to exit full screen
   useEffect(() => {
@@ -72,6 +107,14 @@ export function MediaView({ data, url }: MediaViewProps) {
     }
   }, [data]);
 
+  // Merge lazy-loaded text into data for display and sharing actions
+  const fullData = useMemo(() => {
+    return {
+      ...data,
+      text: data.text || lazyText || (isFetchingText ? '' : ''),
+    };
+  }, [data, lazyText, isFetchingText]);
+
   if (!parsedData) {
     return (
       <div className="text-destructive rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-900/20">
@@ -103,7 +146,7 @@ export function MediaView({ data, url }: MediaViewProps) {
         textTracks={TextTracks}
         isTextView={isTextView}
         setIsTextView={setIsTextView}
-        rawData={data}
+        rawData={fullData}
       />
 
       {isTextView ? (
@@ -153,21 +196,53 @@ export function MediaView({ data, url }: MediaViewProps) {
                 )}
               </Button>
             </motion.div>
-            <motion.pre
-              layout
-              key={isFullScreen ? 'fullscreen' : 'minimized'}
-              initial={{ filter: 'blur(10px)', opacity: 0 }}
-              animate={{ filter: 'blur(0px)', opacity: 1 }}
-              transition={{ duration: 0.4, ease: 'easeOut' }}
-              className={cn(
-                'overflow-x-auto p-4 font-mono text-xs leading-relaxed whitespace-pre sm:text-base sm:whitespace-pre-wrap',
-                isFullScreen
-                  ? 'h-[calc(100vh-42px)] max-w-none'
-                  : 'max-w-[calc(100vw-3rem)] sm:max-w-none',
-              )}
-            >
-              {data.text || 'No text data available.'}
-            </motion.pre>
+            <div className="relative min-h-[200px]">
+              <AnimatePresence mode="wait">
+                {isFetchingText ? (
+                  <motion.div
+                    key="loading"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute inset-0 z-10 p-4"
+                  >
+                    <div className="space-y-3">
+                      <Skeleton className="h-4 w-32 bg-zinc-200 dark:bg-zinc-800" />
+                      <Skeleton className="h-4 w-48 bg-zinc-200 dark:bg-zinc-800" />
+                      <div className="space-y-2 pt-4">
+                        <Skeleton className="h-3 w-3/4 bg-zinc-200 dark:bg-zinc-800" />
+                        <Skeleton className="h-3 w-1/2 bg-zinc-200 dark:bg-zinc-800" />
+                        <Skeleton className="h-3 w-full bg-zinc-200 dark:bg-zinc-800" />
+                        <Skeleton className="h-3 w-5/6 bg-zinc-200 dark:bg-zinc-800" />
+                        <Skeleton className="h-3 w-2/3 bg-zinc-200 dark:bg-zinc-800" />
+                      </div>
+                      <div className="space-y-2 pt-4">
+                        <Skeleton className="h-3 w-full bg-zinc-200 dark:bg-zinc-800" />
+                        <Skeleton className="h-3 w-4/5 bg-zinc-200 dark:bg-zinc-800" />
+                        <Skeleton className="h-3 w-3/4 bg-zinc-200 dark:bg-zinc-800" />
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.pre
+                    key="text-content"
+                    initial={{ opacity: 0, filter: 'blur(5px)' }}
+                    animate={{ opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, filter: 'blur(5px)' }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    className={cn(
+                      'overflow-x-auto p-4 font-mono text-xs leading-relaxed whitespace-pre sm:text-base sm:whitespace-pre-wrap',
+                      isFullScreen
+                        ? 'h-[calc(100vh-42px)] max-w-none'
+                        : 'max-w-[calc(100vw-3rem)] sm:max-w-none',
+                    )}
+                  >
+                    {fullData.text || 'No text data available.'}
+                  </motion.pre>
+                )}
+              </AnimatePresence>
+            </div>
           </motion.div>
         </div>
       ) : (

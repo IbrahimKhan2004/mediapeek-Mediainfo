@@ -155,8 +155,10 @@ export function MediaForm() {
 
       try {
         // --- SERVER ANALYSIS ---
+        // Fetch only object (JSON) format initially to avoid CPU timeout.
+        // Text format will be lazy-loaded on demand in the MediaView component.
         const response = await fetch(
-          `/resource/analyze?url=${encodeURIComponent(url)}&format=json,text`,
+          `/resource/analyze?url=${encodeURIComponent(url)}&format=object`,
           {
             headers: {
               'CF-Turnstile-Response': turnstileToken,

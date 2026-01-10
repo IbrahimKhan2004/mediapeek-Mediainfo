@@ -1,9 +1,8 @@
 import { Badge } from '~/components/ui/badge';
 import {
+  cleanAudioTrackTitle,
   cleanBitrateString,
   cleanMetadataString,
-  cleanRedundantAudioTitle,
-  cleanTrackTitle,
   formatAudioChannels,
 } from '~/lib/formatters';
 import type { MediaTrackJSON } from '~/types/media';
@@ -20,9 +19,7 @@ export function AudioTrackRow({
   showTrackNumber,
 }: AudioTrackRowProps) {
   const langName = track['Language_String'] || track['Language'] || 'Unknown';
-  const title = cleanRedundantAudioTitle(
-    cleanTrackTitle(track['Title'], langName),
-  );
+  const title = cleanAudioTrackTitle(track['Title'], track, langName);
 
   const channelsStr =
     formatAudioChannels(track['Channels'], track['ChannelPositions']) ||

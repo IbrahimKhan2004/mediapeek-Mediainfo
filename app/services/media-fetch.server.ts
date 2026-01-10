@@ -1,3 +1,4 @@
+import { log } from '~/lib/logger.server';
 import {
   getEmulationHeaders,
   resolveGoogleDriveUrl,
@@ -14,22 +15,26 @@ export async function fetchMediaChunk(
   initialUrl: string,
   chunkSize: number = 10 * 1024 * 1024,
 ): Promise<MediaFetchResult> {
+  const tStart = performance.now();
   const { url: targetUrl, isGoogleDrive } = resolveGoogleDriveUrl(initialUrl);
 
   if (isGoogleDrive) {
-    console.log(`[Analyze] Converted Google Drive URL to: ${targetUrl}`);
+    log(`Converted Google Drive URL to: ${targetUrl}`);
   }
 
   validateUrl(targetUrl);
 
   // 1. HEAD Request
+  log(`Starting HEAD request to: ${targetUrl}`);
+  const tHead = performance.now();
   const headRes = await fetch(targetUrl, {
     method: 'HEAD',
     headers: getEmulationHeaders(),
     redirect: 'follow',
   });
+  log(`HEAD request took ${Math.round(performance.now() - tHead)}ms`);
 
-  console.log(`[Analyze] isGoogleDrive: ${isGoogleDrive}`);
+  log(`isGoogleDrive: ${isGoogleDrive}`);
 
   // Check for HTML content (indicates a webpage, not a direct file link)
   const contentType = headRes.headers.get('content-type');
@@ -59,7 +64,7 @@ export async function fetchMediaChunk(
   }
 
   const fileSize = parseInt(headRes.headers.get('content-length') || '0', 10);
-  console.log(`[Analyze] File size: ${fileSize} bytes`);
+  log(`File size: ${fileSize} bytes`);
   if (!fileSize) throw new Error('Could not determine file size');
 
   // 2. Determine Filename
@@ -71,7 +76,7 @@ export async function fetchMediaChunk(
       try {
         filename = decodeURIComponent(starMatch[1]);
       } catch (e) {
-        console.warn('Failed to decode filename*:', e);
+        log('Failed to decode filename*:', 'warn', e);
       }
     } else {
       const normalMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
@@ -80,77 +85,88 @@ export async function fetchMediaChunk(
       }
     }
   }
-  console.log(`[Analyze] Resolved filename: ${filename}`);
+  log(`Resolved filename: ${filename}`);
 
   // 3. Fetch Content Chunk
   const fetchEnd = Math.min(chunkSize - 1, fileSize - 1);
 
-  console.log(`[Analyze] Pre-fetching bytes 0-${fetchEnd}...`);
-  const t0 = performance.now();
+  log(`Pre-fetching bytes 0-${fetchEnd}...`);
+  const tFetch = performance.now();
   const response = await fetch(targetUrl, {
     headers: getEmulationHeaders(`bytes=0-${fetchEnd}`),
     redirect: 'follow',
   });
-  console.log(
-    `[Analyze] Fetch response received in ${Math.round(performance.now() - t0)}ms. Status: ${response.status}`,
+  log(
+    `Fetch response header received in ${Math.round(performance.now() - tFetch)}ms. Status: ${response.status}`,
   );
 
-  let fileBuffer: Uint8Array;
-
   // Strategy: "Turbo Mode" vs "Eco Mode"
-  // If the server respects Range (206), we use native arrayBuffer for speed.
-  // If the server ignores Range (200), we use a safe, pre-allocated stream reader to prevent OOM.
-  if (response.status === 206) {
-    console.log(
-      '[Analyze] Server accepted Range request (206). Using native optimized buffer.',
-    );
-    const arrayBuffer = await response.arrayBuffer();
-    fileBuffer = new Uint8Array(arrayBuffer);
-  } else {
-    // Status 200: Server is sending the FULL file.
-    // We cannot use arrayBuffer() because it would try to load the entire file (e.g. 2GB) and crash.
-    // We must stream it manually, but efficiently.
-    console.warn(
-      '[Analyze] Server ignored Range request (200). Using fallback stream reader with 10MB limit.',
-    );
+  // Debug Strategy: Always use stream reader to monitor progress
+  // if (response.status === 206) {
+  //   log(
+  //     'Server accepted Range request (206). Using native optimized buffer.',
+  //   );
+  //   const tBuff = performance.now();
+  //   try {
+  //     const arrayBuffer = await response.arrayBuffer();
+  //     log(
+  //       `Range body downloaded/buffered in ${Math.round(performance.now() - tBuff)}ms`,
+  //     );
+  //     fileBuffer = new Uint8Array(arrayBuffer);
+  //   } catch (e) {
+  //     log('Failed to buffer range response:', 'error', e);
+  //     throw e;
+  //   }
+  // } else {
+  // STATUS 200 or 206 Generic Handler for Debugging
+  log(
+    `Response status ${response.status}. Using stream reader with progress logging.`,
+  );
 
-    const SAFE_LIMIT = 10 * 1024 * 1024; // 10MB "Eco Mode" limit
-    const tempBuffer = new Uint8Array(SAFE_LIMIT); // Pre-allocate: Zero GC overhead
-    let offset = 0;
+  const SAFE_LIMIT = 10 * 1024 * 1024; // 10MB "Eco Mode" limit
+  const tempBuffer = new Uint8Array(SAFE_LIMIT); // Pre-allocate: Zero GC overhead
+  let offset = 0;
+  let lastLogOffset = 0;
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('Failed to retrieve response body stream');
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Failed to retrieve response body stream');
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-        const spaceLeft = SAFE_LIMIT - offset;
+      const spaceLeft = SAFE_LIMIT - offset;
 
-        if (value.byteLength > spaceLeft) {
-          // Buffer full: Copy what fits, then stop.
-          tempBuffer.set(value.subarray(0, spaceLeft), offset);
-          offset += spaceLeft;
-          console.log(
-            `[Analyze] Hit safe limit of ${SAFE_LIMIT} bytes. Cancelling stream.`,
-          );
-          await reader.cancel();
-          break;
-        } else {
-          tempBuffer.set(value, offset);
-          offset += value.byteLength;
-        }
+      if (value.byteLength > spaceLeft) {
+        // Buffer full: Copy what fits, then stop.
+        tempBuffer.set(value.subarray(0, spaceLeft), offset);
+        offset += spaceLeft;
+        log(`Hit safe limit of ${SAFE_LIMIT} bytes. Cancelling stream.`);
+        await reader.cancel();
+        break;
+      } else {
+        tempBuffer.set(value, offset);
+        offset += value.byteLength;
       }
-    } catch (err) {
-      console.warn('[Analyze] Stream reading interrupted or failed:', err);
-    }
 
-    // Create a view of the actual data we read (no copy)
-    fileBuffer = tempBuffer.subarray(0, offset);
+      // Log every ~1MB
+      if (offset - lastLogOffset > 1024 * 1024) {
+        const mb = (offset / (1024 * 1024)).toFixed(1);
+        log(`Buffered ${mb}MB...`);
+        lastLogOffset = offset;
+      }
+    }
+  } catch (err) {
+    log('Stream reading interrupted or failed:', 'warn', err);
   }
 
-  console.log(`[Analyze] Loaded ${fileBuffer.byteLength} bytes into memory.`);
+  // Create a view of the actual data we read (no copy)
+  const fileBuffer = tempBuffer.subarray(0, offset);
+  // }
+
+  log(`Loaded ${fileBuffer.byteLength} bytes into memory.`);
+  log(`Total fetch operation took ${Math.round(performance.now() - tStart)}ms`);
 
   return {
     buffer: fileBuffer,

@@ -25,11 +25,23 @@ export const cleanTrackTitle = (
 
   let displayTitle = title;
 
-  // Create list of names to remove
-  // Escape special characters for regex
-  const escapedName = langName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const langRegex = new RegExp(`\\b${escapedName}\\b`, 'gi');
-  displayTitle = displayTitle.replace(langRegex, '');
+  // Potential language names to remove
+  // 1. Full name: "English (US)"
+  // 2. Base name: "English"
+  const namesToRemove = [langName];
+  if (langName.includes('(')) {
+    namesToRemove.push(langName.split('(')[0].trim());
+  }
+
+  // Sort by length to remove specific first
+  namesToRemove.sort((a, b) => b.length - a.length);
+
+  namesToRemove.forEach((name) => {
+    if (!name) return;
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const langRegex = new RegExp(`\\b${escapedName}\\b`, 'gi');
+    displayTitle = displayTitle.replace(langRegex, '');
+  });
 
   displayTitle = displayTitle.trim();
 
@@ -37,12 +49,109 @@ export const cleanTrackTitle = (
   return cleanMetadataString(displayTitle);
 };
 
-export const cleanRedundantAudioTitle = (title: string | undefined | null) => {
+export const cleanAudioTrackTitle = (
+  title: string | undefined | null,
+  track: Record<string, unknown>,
+  langName?: string,
+): string | null => {
   if (!title) return null;
-  // regex to match "Surround X.X" or "Stereo" (case insensitive)
-  const regex = /\b(Surround\s+\d+(\.\d+)?|Stereo)\b/gi;
-  const cleaned = title.replace(regex, '').trim();
-  return cleanMetadataString(cleaned) || null;
+
+  let processingTitle = title;
+
+  // Remove Language Name
+  if (langName) {
+    const cleaned = cleanTrackTitle(processingTitle, langName);
+    if (cleaned !== null) {
+      processingTitle = cleaned;
+    }
+  }
+
+  // Remove Redundant "Surround/Stereo"
+  const stereoRegex = /\b(Surround\s+\d+(\.\d+)?|Stereo)\b/gi;
+  processingTitle = processingTitle.replace(stereoRegex, '');
+
+  // Remove Technical Metadata
+  // Fields to check against
+  const fieldsToCheck = [
+    'Format',
+    'Format_Info',
+    'Format_Commercial',
+    'Format_Commercial_IfAny',
+    'Format_String',
+    'Format_AdditionalFeatures',
+    'BitRate_String',
+    'SamplingRate_String',
+    'Channels_String',
+    'ChannelPositions_String2', // e.g. 5.1
+    'Channel(s)_String',
+    'Channels',
+  ];
+
+  const removalTargets: string[] = [];
+  fieldsToCheck.forEach((field) => {
+    const value = track[field];
+    if (typeof value === 'string') {
+      removalTargets.push(value);
+    } else if (typeof value === 'number') {
+      removalTargets.push(String(value));
+    }
+  });
+
+  // Sort by length (descending)
+  removalTargets.sort((a, b) => b.length - a.length);
+
+  removalTargets.forEach((target) => {
+    if (!target) return;
+    const escapedTarget = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedTarget, 'gi');
+    processingTitle = processingTitle.replace(regex, '');
+  });
+
+  // Generic Tech Specs
+  // Channels
+  processingTitle = processingTitle.replace(
+    /\b\d+(\.\d+)?\s*(ch|channel|channels)\b/gi,
+    '',
+  );
+  processingTitle = processingTitle.replace(/\b\d+\.\d+\b/g, '');
+
+  // Sample Rate
+  processingTitle = processingTitle.replace(/\b\d+(\.\d+)?\s*kHz\b/gi, '');
+
+  // Bitrate
+  processingTitle = processingTitle.replace(
+    /\b\d+(\.\d+)?\s*(kb\/s|kbps|mb\/s|mbps)\b/gi,
+    '',
+  );
+
+  // Clean up Connectors
+  processingTitle = processingTitle
+    .replace(/\bwith\b/gi, '')
+    .replace(/\bat\b/gi, '')
+    .replace(/\s+-\s+/g, ' ');
+
+  // Clean up Empty Brackets/Parentheses
+  let prevTitle = '';
+  while (prevTitle !== processingTitle) {
+    prevTitle = processingTitle;
+    processingTitle = processingTitle
+      .replace(/\[\s*\]/g, '')
+      .replace(/\(\s*\)/g, '')
+      .replace(/\{\s*\}/g, '');
+    processingTitle = processingTitle.trim();
+  }
+
+  // Final Polish
+  processingTitle = processingTitle.replace(/\s+/g, ' ').trim();
+
+  // Clean punctuation safely
+  processingTitle = processingTitle.replace(/^[\s([{,\-.;]+/, '');
+  processingTitle = processingTitle.replace(/[\s)\]},\-.;]+$/, '');
+
+  if (processingTitle.length < 2) {
+    return null;
+  }
+  return processingTitle;
 };
 
 export const formatAudioChannels = (
