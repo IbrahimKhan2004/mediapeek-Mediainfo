@@ -1,4 +1,4 @@
-import { Copy, FileText, MoreVertical, Share } from 'lucide-react';
+import { Copy, FileText, MoreVertical, Quote, Share } from 'lucide-react';
 
 import { Button } from '~/components/ui/button';
 import {
@@ -19,6 +19,8 @@ interface OptionsMenuProps {
   url: string;
   isTextView: boolean;
   setIsTextView: (val: boolean) => void;
+  showOriginalTitles: boolean;
+  setShowOriginalTitles: (val: boolean) => void;
   className?: string;
   onShareSuccess?: (url: string) => void;
 }
@@ -37,6 +39,8 @@ export function OptionsMenu({
   url,
   isTextView,
   setIsTextView,
+  showOriginalTitles,
+  setShowOriginalTitles,
   className,
   onShareSuccess,
 }: OptionsMenuProps) {
@@ -67,6 +71,24 @@ export function OptionsMenu({
               View as Text
             </span>
             <Switch checked={isTextView} />
+          </div>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setShowOriginalTitles(!showOriginalTitles);
+          }}
+        >
+          <div className="flex flex-1 items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              {showOriginalTitles ? (
+                <Quote className="h-4 w-4" />
+              ) : (
+                <Quote className="h-4 w-4 opacity-50" />
+              )}
+              Show Original Titles
+            </span>
+            <Switch checked={showOriginalTitles} />
           </div>
         </DropdownMenuItem>
 

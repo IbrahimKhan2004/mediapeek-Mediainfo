@@ -25,6 +25,7 @@ interface MediaViewProps {
 
 export function MediaView({ data, url }: MediaViewProps) {
   const [isTextView, setIsTextView] = useState(false);
+  const [showOriginalTitles, setShowOriginalTitles] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [lazyText, setLazyText] = useState<string | null>(null);
   const [isFetchingText, setIsFetchingText] = useState(false);
@@ -146,6 +147,8 @@ export function MediaView({ data, url }: MediaViewProps) {
         textTracks={TextTracks}
         isTextView={isTextView}
         setIsTextView={setIsTextView}
+        showOriginalTitles={showOriginalTitles}
+        setShowOriginalTitles={setShowOriginalTitles}
         rawData={fullData}
       />
 
@@ -249,8 +252,14 @@ export function MediaView({ data, url }: MediaViewProps) {
         <div className="animate-in fade-in space-y-6 duration-300">
           <GeneralSection generalTrack={General} />
           <VideoSection videoTracks={VideoTracks} />
-          <AudioSection audioTracks={AudioTracks} />
-          <SubtitleSection textTracks={TextTracks} />
+          <AudioSection
+            audioTracks={AudioTracks}
+            showOriginalTitles={showOriginalTitles}
+          />
+          <SubtitleSection
+            textTracks={TextTracks}
+            showOriginalTitles={showOriginalTitles}
+          />
           <ChapterSection menuTrack={MenuTrack} />
           <AccessibilitySection
             generalTrack={General}

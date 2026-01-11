@@ -1,21 +1,32 @@
+import { AnimatePresence, motion } from 'motion/react';
+import { memo, useMemo } from 'react';
+
 import { Badge } from '~/components/ui/badge';
-import { cleanTrackTitle } from '~/lib/formatters';
+import { cleanSubtitleTrackTitle } from '~/lib/formatters';
 import type { MediaTrackJSON } from '~/types/media';
 
 interface SubtitleTrackRowProps {
   track: MediaTrackJSON;
+  showOriginalTitles: boolean;
 }
 
-export function SubtitleTrackRow({ track }: SubtitleTrackRowProps) {
+export const SubtitleTrackRow = memo(function SubtitleTrackRow({
+  track,
+  showOriginalTitles,
+}: SubtitleTrackRowProps) {
   const langName = track['Language_String'] || track['Language'] || 'Unknown';
-  const title = track['Title'];
+  const rawTitle = track['Title'];
   const format = track['Format_Info'] || track['Format'];
   const codecId = track['CodecID'];
 
-  const displayTitle = cleanTrackTitle(title, langName);
+  const displayTitle = useMemo(() => {
+    return showOriginalTitles
+      ? rawTitle
+      : cleanSubtitleTrackTitle(rawTitle, track, langName);
+  }, [showOriginalTitles, rawTitle, track, langName]);
 
   const isForcedTitle =
-    title && title.toLowerCase() === `${langName} (Forced)`.toLowerCase();
+    rawTitle && rawTitle.toLowerCase() === `${langName} (Forced)`.toLowerCase();
 
   const showTitle =
     displayTitle &&
@@ -46,7 +57,19 @@ export function SubtitleTrackRow({ track }: SubtitleTrackRowProps) {
   );
 
   return (
-    <div className="bg-muted/10 border-border/40 flex items-center justify-between rounded-md border p-3">
+    <motion.div
+      layout
+      transition={{
+        layout: {
+          duration: 0.3,
+          type: 'spring',
+          bounce: 0,
+          damping: 20,
+          stiffness: 140,
+        },
+      }}
+      className="bg-muted/10 border-border/40 flex items-center justify-between rounded-md border p-3"
+    >
       <div className="flex items-start gap-3">
         {/* Track Number Column */}
         <span className="text-muted-foreground pt-0.5 text-xs font-medium">
@@ -61,11 +84,20 @@ export function SubtitleTrackRow({ track }: SubtitleTrackRowProps) {
           </span>
 
           {/* Line 2: Track Title */}
-          {showTitle && (
-            <span className="text-muted-foreground text-xs">
-              {displayTitle}
-            </span>
-          )}
+          <AnimatePresence mode="popLayout">
+            {showTitle && (
+              <motion.span
+                key={displayTitle}
+                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                transition={{ duration: 0.2 }}
+                className="text-muted-foreground text-xs"
+              >
+                {displayTitle}
+              </motion.span>
+            )}
+          </AnimatePresence>
 
           {/* Line 3: Format */}
           <span className="text-muted-foreground/70 text-xs tracking-wide">
@@ -74,6 +106,6 @@ export function SubtitleTrackRow({ track }: SubtitleTrackRowProps) {
         </div>
       </div>
       <div className="flex gap-1.5 self-center">{renderBadges()}</div>
-    </div>
+    </motion.div>
   );
-}
+});

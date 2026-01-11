@@ -4,8 +4,10 @@ import { SubtitleTrackRow } from './subtitle-track-row';
 
 export function SubtitleSection({
   textTracks,
+  showOriginalTitles,
 }: {
   textTracks: MediaTrackJSON[];
+  showOriginalTitles: boolean;
 }) {
   if (textTracks.length === 0) return null;
 
@@ -16,7 +18,11 @@ export function SubtitleSection({
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {textTracks.map((text, idx) => (
-          <SubtitleTrackRow key={idx} track={text} />
+          <SubtitleTrackRow
+            key={text.ID || text.UniqueID || idx}
+            track={text}
+            showOriginalTitles={showOriginalTitles}
+          />
         ))}
       </div>
     </section>

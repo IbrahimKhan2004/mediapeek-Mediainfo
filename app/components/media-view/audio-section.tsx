@@ -4,8 +4,10 @@ import { AudioTrackRow } from './audio-track-row';
 
 export function AudioSection({
   audioTracks,
+  showOriginalTitles,
 }: {
   audioTracks: MediaTrackJSON[];
+  showOriginalTitles: boolean;
 }) {
   if (audioTracks.length === 0) return null;
 
@@ -17,10 +19,11 @@ export function AudioSection({
       <div className="flex flex-col gap-3">
         {audioTracks.map((audio, idx) => (
           <AudioTrackRow
-            key={idx}
+            key={audio.ID || audio.UniqueID || idx}
             track={audio}
             trackNumber={audio['@typeorder']}
             showTrackNumber={audioTracks.length > 1}
+            showOriginalTitles={showOriginalTitles}
           />
         ))}
       </div>

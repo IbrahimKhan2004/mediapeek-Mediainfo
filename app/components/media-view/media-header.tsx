@@ -17,6 +17,8 @@ interface MediaHeaderProps {
   textTracks: MediaTrackJSON[];
   isTextView: boolean;
   setIsTextView: (val: boolean) => void;
+  showOriginalTitles: boolean;
+  setShowOriginalTitles: (val: boolean) => void;
   rawData: Record<string, string>;
   url: string;
 }
@@ -28,6 +30,8 @@ export function MediaHeader({
   textTracks,
   isTextView,
   setIsTextView,
+  showOriginalTitles,
+  setShowOriginalTitles,
   rawData,
   url,
 }: MediaHeaderProps) {
@@ -96,6 +100,8 @@ export function MediaHeader({
                 url={url}
                 isTextView={isTextView}
                 setIsTextView={setIsTextView}
+                showOriginalTitles={showOriginalTitles}
+                setShowOriginalTitles={setShowOriginalTitles}
                 onShareSuccess={setPrivateBinUrl}
               />
             </div>
