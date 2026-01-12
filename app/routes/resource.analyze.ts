@@ -9,6 +9,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const startTime = performance.now();
   const url = new URL(request.url);
 
+  // 1. Identity: Generate Request ID immediately for correlation
+  const requestId = request.headers.get('cf-ray') || crypto.randomUUID();
+
   // Initialize Wide Event Context
   // We use UPPER_SNAKE_CASE for status enums in context as per Google Style Guide recommendation for constants
   const logCtx: Record<string, unknown> = {
@@ -38,7 +41,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         severity = 'WARNING';
         logCtx.turnstile = { result: 'MISSING_TOKEN' };
         return Response.json(
-          { error: 'Missing security token. Complete the verification.' },
+          {
+            error:
+              'Security verification is required. Please complete the check.',
+            requestId,
+          },
           { status: 403 },
         );
       }
@@ -69,7 +76,10 @@ export async function loader({ request, context }: Route.LoaderArgs) {
           severity = 'WARNING';
           logCtx.turnstile = { result: 'FAILED', outcome };
           return Response.json(
-            { error: 'Security check failed. Refresh and try again.' },
+            {
+              error: 'Security check failed. Please refresh and try again.',
+              requestId,
+            },
             { status: 403 },
           );
         }
@@ -81,13 +91,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     if (!validationResult.success) {
       const { fieldErrors } = validationResult.error.flatten();
       const serverError =
-        fieldErrors.url?.[0] || fieldErrors.format?.[0] || 'Invalid input.';
+        fieldErrors.url?.[0] ||
+        fieldErrors.format?.[0] ||
+        'The input provided is invalid.';
 
       status = 400;
       severity = 'WARNING';
       logCtx.validationError = fieldErrors;
 
-      return Response.json({ error: serverError }, { status: 400 });
+      return Response.json({ error: serverError, requestId }, { status: 400 });
     }
 
     const { url: initialUrl, format: requestedFormats } = validationResult.data;
@@ -132,11 +144,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     // We attach the error to the log event context
     logCtx.error = errorObj;
 
-    return Response.json({ error: errorMessage }, { status: 500 });
+    return Response.json({ error: errorMessage, requestId }, { status: 500 });
   } finally {
-    // EMIT WIDE EVENT
-    const requestId = request.headers.get('cf-ray') || crypto.randomUUID();
-
     log({
       severity,
       message: 'Media Analysis Request',
