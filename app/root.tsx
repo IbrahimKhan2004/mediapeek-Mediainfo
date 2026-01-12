@@ -66,9 +66,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+import { useMediaQuery } from '~/hooks/use-media-query';
+
+// ... (existing imports)
+
 function AppWithProviders({ children }: { children: React.ReactNode }) {
   const data = useLoaderData<typeof loader>();
   const [theme] = useTheme();
+  const isMobile = useMediaQuery('(max-width: 640px)');
   return (
     <html lang="en" className={clsx(theme)}>
       <head>
@@ -125,7 +130,7 @@ function AppWithProviders({ children }: { children: React.ReactNode }) {
       <body className="bg-background text-foreground antialiased">
         <div className="w-full">
           {children}
-          <Toaster />
+          <Toaster position={isMobile ? 'top-center' : 'bottom-right'} />
         </div>
         <ScrollRestoration />
         <Scripts />

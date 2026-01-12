@@ -12,6 +12,7 @@ interface UseMediaActionsProps {
 
 export function useMediaActions({ data, url }: UseMediaActionsProps) {
   const fetchedData = useRef<Record<string, string>>({});
+  const sharedUrls = useRef<Record<string, string>>({});
   const { triggerSuccess } = useHapticFeedback();
   const [isSharing, setIsSharing] = useState(false);
 
@@ -63,65 +64,41 @@ export function useMediaActions({ data, url }: UseMediaActionsProps) {
       },
       (err: unknown) => {
         console.error('Failed to copy', err);
-        // If the error is 'No content found', the toast is already shown right above
-        // or inside fetchContent's catch block
       },
     );
   };
 
-  const handleShare = (
-    format: string,
-    label: string,
-    onSuccess?: (url: string) => void,
-  ) => {
-    const urlPromise = (async () => {
-      const content = await fetchContent(format, label);
-      if (!content) {
-        if (content === undefined) toast.error(`No ${label} data found.`);
-        throw new Error('No content found');
-      }
+  const getShareUrl = async (format: string, label: string) => {
+    // Return cached URL if available
+    if (sharedUrls.current[format]) {
+      return sharedUrls.current[format];
+    }
 
-      const toastId = toast.loading(`Encrypting & Uploading ${label}...`);
-      setIsSharing(true);
+    const content = await fetchContent(format, label);
+    if (!content) {
+      if (content === undefined) toast.error(`No ${label} data found.`);
+      throw new Error('No content found');
+    }
 
-      try {
-        const { url: newUrl } = await uploadToPrivateBin(content);
-        toast.dismiss(toastId);
-        return newUrl;
-      } catch (err) {
-        console.error('PrivateBin upload failed:', err);
-        toast.error('Upload Failed', {
-          id: toastId,
-          description: 'Could not upload to PrivateBin. Please try again.',
-        });
-        throw err;
-      } finally {
-        setIsSharing(false);
-      }
-    })();
+    const toastId = toast.loading(`Encrypting & Uploading ${label}...`);
+    setIsSharing(true);
 
-    // 1. Trigger Clipboard Write (Sync start with Promise)
-    safeClipboardWrite(
-      urlPromise,
-      () => {
-        triggerSuccess();
-        // The URL is now available. We can call the callback if provided.
-        // But safeClipboardWrite callback doesn't pass the resolved text back to us easily
-        // unless we tap into the promise again.
-        // Actually, we can just attach to urlPromise.
-        urlPromise.then((url) => {
-          if (onSuccess) onSuccess(url);
-          toast.success('Link Copied', {
-            description: `Secure ${label} link copied. Click the button to open.`,
-            duration: 4000,
-          });
-        });
-      },
-      () => {
-        // Errors handled in promise or toast
-      },
-    );
+    try {
+      const { url: newUrl } = await uploadToPrivateBin(content);
+      sharedUrls.current[format] = newUrl;
+      toast.dismiss(toastId);
+      return newUrl;
+    } catch (err) {
+      console.error('PrivateBin upload failed:', err);
+      toast.error('Upload Failed', {
+        id: toastId,
+        description: 'Could not upload to PrivateBin. Please try again.',
+      });
+      throw err;
+    } finally {
+      setIsSharing(false);
+    }
   };
 
-  return { handleCopy, handleShare, isSharing };
+  return { handleCopy, getShareUrl, isSharing };
 }
