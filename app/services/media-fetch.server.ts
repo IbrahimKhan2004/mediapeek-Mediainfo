@@ -139,29 +139,130 @@ export async function fetchMediaChunk(
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Failed to retrieve response body stream');
 
+  // Check for Zip Header to transparently decompress Deflate streams
+  // We need to read the first chunk primarily to check for the Zip signature.
+  const ZIP_SIG = [0x50, 0x4b, 0x03, 0x04];
+
+  let firstChunk: Uint8Array | null = null;
+  {
+    const { done, value } = await reader.read();
+    if (!done && value) {
+      firstChunk = value;
+    }
+  }
+
+  let finalReader = reader;
+  let isZipCompressed = false;
+
+  // Verify Zip Signature
+  if (
+    firstChunk &&
+    firstChunk.length > 30 &&
+    firstChunk[0] === ZIP_SIG[0] &&
+    firstChunk[1] === ZIP_SIG[1] &&
+    firstChunk[2] === ZIP_SIG[2] &&
+    firstChunk[3] === ZIP_SIG[3]
+  ) {
+    // Check compression method at offset 8 (2 bytes, little endian)
+    const compressionMethod = firstChunk[8] | (firstChunk[9] << 8);
+
+    // Method 8 is DEFLATE. Method 0 is STORED.
+    if (compressionMethod === 8) {
+      // Zip Deflate detected: Create a DecompressionStream to unzip on-the-fly.
+      isZipCompressed = true;
+
+      // Parse local file header to find where the compressed data starts
+      const fileNameLength = firstChunk[26] | (firstChunk[27] << 8);
+      const extraFieldLength = firstChunk[28] | (firstChunk[29] << 8);
+      const dataOffset = 30 + fileNameLength + extraFieldLength;
+
+      // Ensure we have enough data in the first chunk to strip the header
+      if (firstChunk.length > dataOffset) {
+        const dataInFirstChunk = firstChunk.subarray(dataOffset);
+
+        // 1. Create a stream that emits the rest of the first chunk (minus header) + the original stream
+        const rawCompressedStream = new ReadableStream({
+          start(controller) {
+            if (dataInFirstChunk.byteLength > 0) {
+              controller.enqueue(dataInFirstChunk);
+            }
+          },
+          async pull(controller) {
+            const { done, value } = await reader.read();
+            if (done) {
+              controller.close();
+            } else {
+              controller.enqueue(value);
+            }
+          },
+          cancel() {
+            reader.cancel();
+          },
+        });
+
+        // 2. Pipe through DecompressionStream to get raw media data
+        const decompressor = new DecompressionStream('deflate-raw');
+        finalReader = rawCompressedStream.pipeThrough(decompressor).getReader();
+
+        // firstChunk is now consumed by the new stream pipeline
+        firstChunk = null;
+      }
+    }
+  }
+
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
+    // If strict zip decompression was not applied (not zip, or stored zip, or error),
+    // process the pending firstChunk manually.
+    if (firstChunk) {
       const spaceLeft = SAFE_LIMIT - offset;
-
-      if (value.byteLength > spaceLeft) {
-        // Buffer full: Copy what fits, then stop.
-        tempBuffer.set(value.subarray(0, spaceLeft), offset);
+      if (firstChunk.byteLength > spaceLeft) {
+        tempBuffer.set(firstChunk.subarray(0, spaceLeft), offset);
         offset += spaceLeft;
-        await reader.cancel();
-        break;
+
+        // If buffer full from just the first chunk, close the original reader.
+        // We only cancel the original reader if we didn't upgrade to a decompression pipeline,
+        // because the decompression pipeline manages the original reader's lifecycle.
+        if (!isZipCompressed) await reader.cancel();
       } else {
-        tempBuffer.set(value, offset);
-        offset += value.byteLength;
+        tempBuffer.set(firstChunk, offset);
+        offset += firstChunk.byteLength;
+      }
+    }
+
+    // Now read the rest
+    if (offset < SAFE_LIMIT) {
+      while (true) {
+        const { done, value } = await finalReader.read();
+        if (done) break;
+
+        const spaceLeft = SAFE_LIMIT - offset;
+
+        if (value.byteLength > spaceLeft) {
+          tempBuffer.set(value.subarray(0, spaceLeft), offset);
+          offset += spaceLeft;
+          await finalReader.cancel();
+          break;
+        } else {
+          tempBuffer.set(value, offset);
+          offset += value.byteLength;
+        }
       }
     }
   } catch (err) {
-    // Stream failed, propagate error to be caught by main handler
-    throw new Error(
-      `Stream reading failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    const errorMessage = err instanceof Error ? err.message : String(err);
+
+    // DecompressionStream throws if the stream ends while expecting more data (valid for partial fetches)
+    if (
+      offset > 0 &&
+      (errorMessage.includes('incomplete data') ||
+        errorMessage.includes('unexpected end of file'))
+    ) {
+      // We got some data before the stream ended/failed, which is expected for partial zip chunks.
+      // Sallow the error and return what we have.
+    } else {
+      // Stream failed really, propagate error to be caught by main handler
+      throw new Error(`Stream reading failed: ${errorMessage}`);
+    }
   }
 
   // Create a view of the actual data we read (no copy)
