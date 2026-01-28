@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { extractFirstFileFromArchive } from '~/lib/media-utils';
+import {
+  extractFirstFileFromArchive,
+  isValidFilename,
+} from '~/lib/media-utils';
 
 // Mock the factory to avoid the .wasm import failure
 vi.mock('~/services/mediainfo-factory.server', () => {
@@ -165,6 +168,7 @@ function createMockTarWithLongLink(longName: string): Uint8Array {
   const sizeStr = size.toString(8).padStart(11, '0') + ' ';
   linkHeader.set(new TextEncoder().encode(sizeStr), 124);
   linkHeader.set(new TextEncoder().encode('L'), 156); // Type L
+  linkHeader.set(new TextEncoder().encode('ustar'), 257); // Add Magic
   buffers.push(linkHeader);
 
   // 2. LongLink Content (The Name)
@@ -245,5 +249,46 @@ describe('Archive Filename Extraction', () => {
     const junk = new Uint8Array([0x00, 0x01, 0x02, 0x03]);
     const result = extractFirstFileFromArchive(junk);
     expect(result).toBeNull();
+  });
+  it('should return null for Matroska (MKV) file signature', () => {
+    // Matroska signature: 1A 45 DF A3
+    const mkvHeader = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x00]);
+    const result = extractFirstFileFromArchive(mkvHeader);
+    expect(result).toBeNull();
+  });
+
+  it('should return null for MP4/MOV file signature', () => {
+    // ftyp atom at offset 4 usually
+    const mp4Header = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
+    ]); // ... ftyp
+    const result = extractFirstFileFromArchive(mp4Header);
+    expect(result).toBeNull();
+  });
+});
+
+describe('Filename Validation', () => {
+  it('should accept valid filenames', () => {
+    expect(isValidFilename('Movie.mkv')).toBe(true);
+    expect(isValidFilename('My Document 2024.pdf')).toBe(true);
+    expect(isValidFilename('Standard-ASCII_Chars.txt')).toBe(true);
+  });
+
+  it('should reject binary garbage', () => {
+    // Matroska header raw bytes as string
+    const garbage = String.fromCharCode(0x1a, 0x45, 0xdf, 0xa3);
+    expect(isValidFilename(garbage)).toBe(false);
+  });
+
+  it('should reject strings with excessive control characters', () => {
+    const garbage = 'Normal' + String.fromCharCode(0, 1, 2, 3, 4, 5);
+    // 6/12 = 50% bad
+    expect(isValidFilename(garbage)).toBe(false);
+  });
+
+  it('should reject empty or null inputs', () => {
+    expect(isValidFilename('')).toBe(false);
+    expect(isValidFilename(null)).toBe(false);
+    expect(isValidFilename(undefined)).toBe(false);
   });
 });

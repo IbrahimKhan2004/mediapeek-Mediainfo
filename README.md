@@ -65,6 +65,12 @@ Test with these sample URLs:
 - [Surround Sound by Buzz*Buzz_Buzz*](https://drive.google.com/drive/folders/1JxmeedtAtgmoafXv9rroiDOS2vEX7N4b)
 - [Dolby Vision, Atmos, DTS-X Demos](https://1drv.ms/f/c/999a020cf5718098/EobEBJqZ92ZFipImX5WugTUB7xX5r5ko-omYcTJQ9chLPA)
 
+## Known Issues
+
+### Archive Bitrate Accuracy
+
+When analyzing media files contained within archives (such as `.zip` or `.tar`), the reported bitrate may be inaccurate. This limitation occurs because the analysis engine streams the inner file and may estimate bitrate based on incomplete size data.
+
 ## License
 
 **MediaPeek** is released under the GNU GPLv3.

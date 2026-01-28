@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from 'react';
 
 import { OptionsMenu } from '~/components/media-view/options-menu';
 import { Separator } from '~/components/ui/separator';
-import { getMediaBadges } from '~/lib/media-utils';
+import { getMediaBadges, isValidFilename } from '~/lib/media-utils';
 import type { MediaTrackJSON } from '~/types/media';
 
 import { MediaIcon } from './media-icon';
@@ -47,8 +47,24 @@ export const MediaHeader = memo(function MediaHeader({
   const filenameRaw =
     generalTrack.CompleteName ?? generalTrack.File_Name ?? 'Unknown';
   // Extract basename
-  const displayFilename =
+  let displayFilename =
     filenameRaw.split('/').pop()?.split('\\').pop() ?? filenameRaw;
+
+  // Defensive validation: If backend logic missed it, check for binary garbage
+  if (!isValidFilename(displayFilename)) {
+    // Fallback to extracting filename from URL
+    try {
+      const urlObj = new URL(url);
+      const urlPath = urlObj.pathname.split('/').pop();
+      if (urlPath) {
+        displayFilename = decodeURIComponent(urlPath);
+      } else {
+        displayFilename = 'Unknown';
+      }
+    } catch {
+      displayFilename = 'Unknown';
+    }
+  }
 
   const archiveNameRaw = generalTrack.Archive_Name as string | undefined;
   const displayArchiveName =

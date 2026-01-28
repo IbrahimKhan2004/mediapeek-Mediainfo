@@ -2,6 +2,46 @@ import { MEDIA_CONSTANTS } from '~/lib/media/constants';
 import type { MediaTrackJSON } from '~/types/media';
 
 /**
+ * Validates if a string is a valid filename (not binary garbage).
+ *
+ * When MediaInfo analyzes a buffer stream (not a file), it may return the
+ * binary file header bytes interpreted as a string. This function detects
+ * such garbage by checking for non-printable or suspicious characters.
+ *
+ * @param str - The string to validate
+ * @returns true if the string appears to be a valid filename, false if it contains binary garbage
+ *
+ * @example
+ * isValidFilename('Movie.mkv') // true
+ * isValidFilename('Eߣ�B��matroska') // false (Matroska header bytes)
+ */
+export function isValidFilename(str: string | undefined | null): str is string {
+  if (!str || str.length === 0) return false;
+
+  // Count characters that are suspicious for filenames:
+  // - Control characters (0-31, 127)
+  // - Unicode replacement character (0xFFFD)
+  // - C1 control characters (0x80-0x9F)
+  // - SUB character (0x1A, used in Matroska/EBML)
+  let suspiciousCount = 0;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (
+      code < 32 || // Control characters (including SUB at 0x1A)
+      code === 127 || // DEL
+      code === 0xfffd || // Unicode replacement character
+      (code >= 0x80 && code <= 0x9f) // C1 control characters
+    ) {
+      suspiciousCount++;
+    }
+  }
+
+  // If more than 5% of the string is suspicious, treat it as binary garbage
+  // Lower threshold catches file headers that mix printable chars with binary
+  return suspiciousCount / str.length <= 0.05;
+}
+
+/**
  * Checks if the filename indicates an Apple TV source.
  */
 export const isAppleTvFilename = (filename: string): boolean => {
@@ -401,9 +441,18 @@ export function extractFirstFileFromArchive(buffer: Uint8Array): string | null {
     return extractFirstFileFromZip(buffer);
   }
 
-  // 2. Fallback to TAR parsing (no reliable magic at 0, process as stream)
-  // Most TARs have 'ustar' at 257, but we can just attempt parsing.
-  return extractFirstFileFromTar(buffer);
+  // 2. Check for TAR by verifying USTAR magic at offset 257
+  // This prevents binary media files from being incorrectly parsed as TAR
+  if (buffer.byteLength > 262) {
+    // USTAR magic is "ustar" at offset 257 (with null or space padding)
+    const ustarMagic = new TextDecoder().decode(buffer.subarray(257, 262));
+    if (ustarMagic === 'ustar') {
+      return extractFirstFileFromTar(buffer);
+    }
+  }
+
+  // Not a recognized archive format
+  return null;
 }
 
 function extractFirstFileFromZip(buffer: Uint8Array): string | null {

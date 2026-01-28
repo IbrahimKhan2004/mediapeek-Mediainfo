@@ -90,6 +90,8 @@ interface LogEvent {
     // Business fields
     fileSize?: number;
     filename?: string;
+    archiveName?: string; // If inside a container (zip/tar)
+    innerFilename?: string; // The file inside the container
 
     // Sub-system diagnostics
     fetch?: FetchDiagnostics;

@@ -1,5 +1,6 @@
 import {
   extractFirstFileFromArchive,
+  isValidFilename,
   normalizeMediaInfo,
 } from '~/lib/media-utils';
 import {
@@ -158,12 +159,21 @@ export async function analyzeMediaBuffer(
               );
 
               if (generalTrack) {
-                if (
-                  !generalTrack.CompleteName &&
-                  !generalTrack.Complete_name &&
-                  !generalTrack.File_Name
-                ) {
-                  generalTrack.CompleteName = displayFilename;
+                // Get the first valid filename from MediaInfo, or undefined
+                const getValidFilename = (): string | undefined => {
+                  if (isValidFilename(generalTrack.CompleteName))
+                    return generalTrack.CompleteName;
+                  if (isValidFilename(generalTrack.Complete_name))
+                    return generalTrack.Complete_name;
+                  if (isValidFilename(generalTrack.File_Name))
+                    return generalTrack.File_Name;
+                  return undefined;
+                };
+
+                const mediaInfoFilename = getValidFilename();
+
+                if (!mediaInfoFilename) {
+                  // No valid filename from MediaInfo (likely binary garbage), use our resolved filename
                   generalTrack.CompleteName = displayFilename;
                 } else if (archiveInnerName) {
                   // If we specifically found an inner name from archive peeking, force use it
@@ -172,6 +182,8 @@ export async function analyzeMediaBuffer(
                 }
 
                 // If detected name differs from URL name, preserve URL name as Archive Name
+                // This typically happens for archives: `displayFilename` (inner) != `filename` (outer zip)
+                // For direct links: `displayFilename` == `filename`, so Archive_Name is NOT set.
                 if (displayFilename !== filename) {
                   generalTrack.Archive_Name = filename;
                 }
